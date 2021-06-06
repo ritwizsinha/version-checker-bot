@@ -1,6 +1,8 @@
 import { Probot } from "probot";
 import axios from 'axios';
 
+import { getVersion } from './functions/getVersion';
+
 export = (app: Probot) => {
   app.on("issues.opened", async (context) => {
     const issueComment = context.issue({
@@ -18,22 +20,17 @@ export = (app: Probot) => {
     const regex = /\+[ ]+\<version\>(?<major>\d{1,2}).(?<minor>\d{1,2}).(?<patch>\d{1,2})<\/version>/m;
     const fileDiff = data as string;
     const result = fileDiff.match(regex);
+
+    if (!result) return;
     const major = (result as any)?.groups['major'];
     const minor = (result as any)?.groups['minor'];
     const patch = (result as any)?.groups['patch'];
     const prVersion = `${major}.${minor}.${patch}`;
-    const pomFileContents = (await context.octokit.repos.getContent({
+    const mainPrVersion = await getVersion({
+      getContent: context.octokit.repos.getContent,
       owner,
-      repo: repoName,
-      path: 'pom.xml',
-      mediaType: {
-        format: 'raw'
-      }
-    })).data;
-    const regexMain = /<version>(?<major>\d{1,2}).(?<minor>\d{1,2}).(?<patch>\d{1,2})<\/version>/m;
-    const mainresult = pomFileContents.toLocaleString().match(regexMain);
-    const mainPrVersion = `${(mainresult as any).groups['major']}.${(mainresult as any).groups['minor']}.${(mainresult as any).groups['patch']}`;
-    console.log(mainPrVersion, prVersion);
+      repoName,
+    });
     let issueComment;
     if (mainPrVersion >= prVersion) {
       issueComment = context.issue({
@@ -46,8 +43,45 @@ export = (app: Probot) => {
     }
 
     await context.octokit.issues.createComment(issueComment);
-    // console.log(pomFileContents);
-    // console.log(diff_url);
+  });
+  
+  app.on('pull_request.closed', async (context) => {
+    const { merge_commit_sha: mergeCommitSha, merged } = context.payload.pull_request; 
+    if (!merged || !mergeCommitSha) return;
+    console.log(mergeCommitSha);
+    const owner = context.payload.repository.owner.login  as string;
+    const repo = context.payload.repository;
+    const repoName = repo.name;
+    try {
+      const mainBranchVersion = await getVersion({
+        getContent: context.octokit.rest.repos.getContent,
+        owner,
+        repoName,
+      });
+      console.log(mainBranchVersion);
+      const { data: { sha } } = await context.octokit.rest.git.createTag({
+          tag: `v${mainBranchVersion}`,
+          object: mergeCommitSha,
+          message: "Creating tag on merge",
+          tagger: {
+            name: owner,
+            email: "abc@gmail.com",
+          },
+          type: 'commit',
+          owner,
+          repo: repoName, 
+      });
+      console.log("Tag sha", sha);
+      await context.octokit.rest.git.createRef({
+        owner,
+        repo: repoName,
+        ref: `refs/tags/v${mainBranchVersion}`,
+        sha,
+      });
+    } catch (err) {
+      console.log(err);
+    }
+    
   })
   // For more information on building apps:
   // https://probot.github.io/docs/
