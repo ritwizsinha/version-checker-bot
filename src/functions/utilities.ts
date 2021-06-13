@@ -1,7 +1,7 @@
 import { Context } from "probot";
-import { toJson } from "xml2json";
+import { parseStringPromise } from 'xml2js';
 
-export async function getVersionFromRefWithContext(context: Context, { repo, owner, ref}) {
+export async function getVersionFromRefWithContext(context: Context, { repo, owner, ref }) {
   const params = {
     owner,
     path: 'pom.xml',
@@ -12,9 +12,8 @@ export async function getVersionFromRefWithContext(context: Context, { repo, own
   }
   if (ref) params['ref'] = ref;
   const { data } = await context.octokit.repos.getContent(params);
-  const jsonStringData = toJson(data.toLocaleString());
-  const jsonConfigObject = JSON.parse(jsonStringData);
-  return jsonConfigObject['project']['version'];
+  const { project: { version } } = await parseStringPromise(data);
+  return version
 }
 
 export async function wrapper(promise) {
@@ -24,4 +23,4 @@ export async function wrapper(promise) {
   } catch (err) {
     return [null, err];
   }
-} 
+}

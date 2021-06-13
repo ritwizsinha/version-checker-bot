@@ -1,69 +1,60 @@
 import { Probot } from "probot";
-import { getVersionFromRefWithContext, wrapper} from './functions/utilities';
+import { checkPRVersionWithMain, createTagOnMergeToMain } from './functions/usecases';
+import { feature_testing_pom, feature_create_tag_on_merge, feature_did_sonar_run } from './constants';
 
+import { load } from 'js-yaml';
 
 export = (app: Probot) => {
+  app.on(['pull_request.opened', 'pull_request.reopened'], async (context) => {
+    const config = (await context.config('bot.yml')) as any;
+    const shouldRun = config[feature_testing_pom]['detect'];
+    if (!shouldRun) return;
 
-  app.on('pull_request.opened', async (context) => {
-    const { ref } = context.payload.pull_request.head
-    const owner = context.payload.repository.owner.login  as string;
-    const repoName = context.payload.repository.name;
-    const [ versionStringOnPr, err ] = await wrapper(getVersionFromRefWithContext(context, { repo: repoName, owner, ref })); 
-    if (err) {
-      console.log(err);
-      return;
-    }
+    const givenBranches = config[feature_testing_pom]['branches'] as Array<{ from: string, to: string }>;
+    const { head: { ref: fromBranch }, base: { ref: toBranch } } = context.payload.pull_request;
+    if (givenBranches.filter((item) => item.from === fromBranch && item.to === toBranch).length === 0) return;
 
-    const [ versionStringOnMaster, err2 ] = await wrapper(getVersionFromRefWithContext(context, { repo: repoName,owner, ref: null }));
-    if (err2) {
-      console.log(err2);
-      return;
-    }
-    console.log(versionStringOnMaster, versionStringOnPr);
-    if (versionStringOnPr <= versionStringOnMaster) {
-      const comment = context.issue({
-        body: "Please update the version to be greater than master"
-      });
-      await context.octokit.issues.createComment(comment);
-    }
-  });
-  
-  app.on('pull_request.closed', async (context) => {
-    context.octokit.config
-    const { merge_commit_sha: mergeCommitSha, merged } = context.payload.pull_request; 
-    if (!merged || !mergeCommitSha) return;
-    console.log(mergeCommitSha);
-    const owner = context.payload.repository.owner.login  as string;
+    const commentText = await checkPRVersionWithMain(context);
+    if (commentText === "") return;
+    const comment = context.issue({
+      body: commentText,
+    });
+    await context.octokit.issues.createComment(comment);
+
+
+    // Checking for sonar test
+    const shouldRunSonarTest = config[feature_did_sonar_run]['detect'];
+    if (!shouldRunSonarTest) return;
+
+    const projectKeyFile = config[feature_did_sonar_run]['project-key-file'];
+    const owner = context.payload.repository.owner.login as string;
     const repoName = context.payload.repository.name;
-    try {
-      const [ mainBranchVersion, err ] = await wrapper(getVersionFromRefWithContext(context, { repo: repoName, owner, ref: null }));
-      if (err) {
-        console.log(err);
-        return;
+    const params = {
+      owner,
+      path: projectKeyFile,
+      repo: repoName,
+      mediaType: {
+        format: 'raw'
       }
-      const { data: { sha } } = await context.octokit.rest.git.createTag({
-          tag: `v${mainBranchVersion}`,
-          object: mergeCommitSha,
-          message: "Creating tag on merge",
-          tagger: {
-            name: owner,
-            email: "abc@gmail.com",
-          },
-          type: 'commit',
-          owner,
-          repo: repoName, 
-      });
-      console.log("Tag sha", sha);
-      await context.octokit.rest.git.createRef({
-        owner,
-        repo: repoName,
-        ref: `refs/tags/v${mainBranchVersion}`,
-        sha,
-      });
-    } catch (err) {
-      console.log(err);
     }
+
+    const { data } = await context.octokit.repos.getContent(params);
+    const yamlJSON = load(data.toLocaleString());
+    console.log(yamlJSON);
   });
 
-  app.on("")
+  app.on('pull_request.closed', async (context) => {
+    const { merge_commit_sha: mergeCommitSha, merged } = context.payload.pull_request;
+    if (!merged || !mergeCommitSha) return;
+
+    const config = (await context.config('bot.yml')) as any;
+    const { detect: shouldRun, from, to } = config[feature_create_tag_on_merge];
+    if (!shouldRun) return;
+
+    const { head: { ref: fromBranch }, base: { ref: toBranch } } = context.payload.pull_request;
+
+    if (fromBranch !== from || toBranch !== to) return;
+    return createTagOnMergeToMain(context);
+  });
 };
+
