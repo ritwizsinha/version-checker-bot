@@ -1,0 +1,17 @@
+testing-pom-version-in-pr-check:
+  branches:
+  - from: release
+    to: main
+  detect: true
+create-tag-on-merge:
+  from: release
+  to: master
+  detect: true
+did-run-sonar-check:
+  # Duration in minutes
+  maxDuration: 60
+  branches:
+  - from: release
+    to: main
+  project-key-file: Optumfile.yml
+  detect: true
