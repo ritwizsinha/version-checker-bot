@@ -15,7 +15,8 @@
     "build": "tsc",
     "start": "probot run ./lib/index.js",
     "test": "jest",
-    "dev": "npm run build && npm start"
+    "dev": "npm run build && npm start",
+    "prod": "node ./main.js"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",
