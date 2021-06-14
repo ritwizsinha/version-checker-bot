@@ -1,6 +1,5 @@
 import { getVersionFromRefWithContext } from './utilities';
 import { greater_version_number_than_master, error_in_checking_versions } from '../constants';
-import { Context } from 'vm';
 
 export async function checkPRVersionWithMain(context): Promise<string> {
     const { ref } = context.payload.pull_request.head
@@ -53,17 +52,17 @@ export async function createTagOnMergeToMain(context) {
     }
 }
 
-export async function didSonarTestRunAndPass(context: Context) {
+// export async function didSonarTestRunAndPass(context: Context) {
 
-  // Is the check turned on
+//   // Is the check turned on
    
-  // Get the config file containing project key
+//   // Get the config file containing project key
 
-  // Get the project key
+//   // Get the project key
 
-  // Call the sonar api
+//   // Call the sonar api
 
-  // Get the status
+//   // Get the status
 
-  // If status is failing return a comment with the details
-}
+//   // If status is failing return a comment with the details
+// }
